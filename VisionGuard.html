@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>VisionGuard Pro — AI Proctoring (Stable)</title>
+
+  <!-- Tailwind (CDN) + Fonts -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    :root{
+      --bg:#0b1020;
+      --panel:#0f172a;
+      --panel-2:#141c2f;
+      --text:#e5edff;
+      --muted:#94a3b8;
+      --brand:#7c3aed;
+      --brand-2:#06b6d4;
+      --ok:#22c55e;
+      --warn:#f59e0b;
+      --err:#ef4444;
+      --glow: rgba(124,58,237,.35);
+    }
+    [data-theme="light"]{
+      --bg:#f7fafc;
+      --panel:#ffffff;
+      --panel-2:#f1f5f9;
+      --text:#0b1020;
+      --muted:#475569;
+      --glow: rgba(124,58,237,.25);
+    }
+    html,body{height:100%}
+    body{
+      font-family:'Inter',sans-serif;
+      color:var(--text);
+      background:
+        radial-gradient(1200px 600px at 10% -10%, rgba(124,58,237,.10), transparent 40%),
+        radial-gradient(800px 400px at 110% 10%, rgba(6,182,212,.08), transparent 45%),
+        linear-gradient(180deg, #0a0f1f 0%, #0c1326 100%);
+      transition: background .4s ease, color .3s ease;
+    }
+    [data-theme="light"] body, [data-theme="light"]{
+      background: linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
+    }
+
+    .glass{
+      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+      border:1px solid rgba(255,255,255,.10);
+      border-radius:18px;
+      box-shadow:0 10px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06);
+      backdrop-filter: blur(8px);
+    }
+    [data-theme="light"] .glass{
+      background: #fff;
+      border:1px solid rgba(0,0,0,.08);
+      box-shadow: 0 10px 30px rgba(2,6,23,.08);
+      backdrop-filter:none;
+    }
+
+    #video-container{
+      position:relative; overflow:hidden; border-radius:20px;
+      border:1px solid rgba(255,255,255,.10);
+      background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      box-shadow: 0 10px 30px rgba(0,0,0,.4); isolation:isolate;
+    }
+    #video-container:before{
+      content:""; position:absolute; inset:-2px; border-radius:22px;
+      background: conic-gradient(from 180deg at 50% 50%, var(--glow), transparent 40%, var(--glow));
+      filter: blur(14px); opacity:.3; z-index:0; animation: spin 10s linear infinite;
+    }
+    @keyframes spin{ to{ transform: rotate(360deg); } }
+    .recording:after{
+      content:"REC"; position:absolute; top:10px; left:10px;
+      background: var(--err); color:white; font-weight:800; font-size:.75rem;
+      padding:.2rem .45rem; border-radius:8px;
+      box-shadow:0 0 0 0 rgba(239,68,68,.7);
+      animation: pulse 1.1s infinite; z-index:5;
+    }
+    @keyframes pulse{
+      0%{ box-shadow:0 0 0 0 rgba(239,68,68,.65) }
+      70%{ box-shadow:0 0 0 12px rgba(239,68,68,0) }
+      100%{ box-shadow:0 0 0 0 rgba(239,68,68,0) }
+    }
+
+    video, canvas{ width:100%; height:auto; display:block; border-radius:20px; position:relative; z-index:1; }
+    canvas{ position:absolute; inset:0; pointer-events:none; }
+
+    .btn{
+      width:100%; font-weight:600; padding:.65rem 1rem; border-radius:12px;
+      transition: transform .15s ease, filter .2s ease, box-shadow .2s ease;
+      border:1px solid rgba(255,255,255,.12);
+      background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
+      box-shadow:0 8px 18px rgba(0,0,0,.35);
+    }
+    .btn:disabled{ opacity:.55; cursor:not-allowed; }
+    .btn:hover{ transform: translateY(-1px) }
+    .btn-primary{ background:linear-gradient(180deg, rgba(124,58,237,.90), rgba(124,58,237,.65)); border-color:rgba(124,58,237,.65); color:#fff; }
+    .btn-danger{ background:linear-gradient(180deg, rgba(239,68,68,.90), rgba(239,68,68,.65)); border-color:rgba(239,68,68,.7); color:#fff; }
+    .btn-neutral{ color: var(--text); }
+
+    .toggle{
+      display:inline-flex; align-items:center; gap:.5rem;
+      padding:.4rem .7rem; border-radius:9999px;
+      background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
+      border:1px solid rgba(255,255,255,.10);
+      cursor:pointer; user-select:none;
+    }
+
+    .status-pill{
+      display:inline-flex; align-items:center; gap:.55rem;
+      padding:.45rem .8rem; border-radius:9999px;
+      background:rgba(124,58,237,.15);
+      border:1px solid rgba(124,58,237,.35);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+    }
+    .dot{ width:.6rem; height:.6rem; border-radius:9999px; background: var(--warn); box-shadow:0 0 20px rgba(245,158,11,.55) }
+
+    #log-container{ height:18rem; overflow-y:auto; background:rgba(2,6,23,.55); border:1px solid rgba(255,255,255,.06); border-radius:12px; }
+    [data-theme="light"] #log-container{ background:#f8fafc; border-color: rgba(0,0,0,.08); }
+    .log-entry{ border-bottom:1px dashed rgba(148,163,184,.25); padding:.55rem 0; }
+
+    *::-webkit-scrollbar{ height:10px; width:10px; }
+    *::-webkit-scrollbar-thumb{ background:linear-gradient(180deg, #64748b, #475569); border-radius:20px; border:2px solid transparent; background-clip:content-box; }
+    *::-webkit-scrollbar-track{ background:transparent; }
+
+    .title-gradient{
+      background: linear-gradient(90deg, #e5edff 0%, #c7d2fe 40%, #a7f3d0 100%);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    [data-theme="light"] .title-gradient{
+      background: linear-gradient(90deg, #1f2937 0%, #4b5563 100%);
+      -webkit-background-clip: text; color: transparent;
+    }
+
+    .metric{
+      display:flex; align-items:center; justify-content:space-between;
+      padding:.9rem 1rem; border-radius:14px;
+      border:1px solid rgba(255,255,255,.10);
+      background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+    }
+    [data-theme="light"] .metric{ background:#fff; border-color: rgba(0,0,0,.08); }
+
+    .help{ border-left:4px solid var(--warn); }
+    .help pre{ background: rgba(148,163,184,.1); padding:.5rem .75rem; border-radius:.5rem; overflow:auto; }
+    @media print{ .no-print{ display:none!important; } body{ background:#fff; color:#0b1020; } }
+  </style>
+
+  <!-- Scripts (UMD) -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tone@14.7.58/build/Tone.js"></script>
+</head>
+
+<body class="min-h-screen p-6">
+  <!-- Header -->
+  <header class="no-print max-w-7xl mx-auto mb-6">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="size-9 rounded-xl bg-gradient-to-br from-violet-500/70 to-cyan-400/70 grid place-items-center ring-1 ring-white/20">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path d="M4 12h16M12 4v16" stroke="white" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <h1 class="text-2xl sm:text-3xl font-extrabold">
+          <span class="title-gradient">VisionGuard Pro</span>
+          <span class="text-sm align-top text-slate-400 font-semibold ml-2">AI Proctoring · Stable</span>
+        </h1>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <label class="toggle" title="Toggle theme">
+          <input id="themeToggle" type="checkbox" class="hidden" />
+          <span class="text-sm text-slate-300">Light</span>
+        </label>
+        <label class="toggle" title="Overlay boxes">
+          <input id="overlayToggle" type="checkbox" class="hidden" checked />
+          <span class="text-sm text-slate-300">Overlay</span>
+        </label>
+        <label class="toggle" title="Sound alerts">
+          <input id="soundToggle" type="checkbox" class="hidden" checked />
+          <span class="text-sm text-slate-300">Sound</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div class="metric"><span class="text-slate-400 text-sm">Status</span><span id="statusLabel" class="font-semibold">Initializing…</span></div>
+      <div class="metric"><span class="text-slate-400 text-sm">Duration</span><span id="durLabel" class="font-semibold">00:00</span></div>
+      <div class="metric"><span class="text-slate-400 text-sm">FPS</span><span id="fpsLabel" class="font-semibold">—</span></div>
+      <div class="metric"><span class="text-slate-400 text-sm">Camera</span>
+        <select id="deviceSelect" class="bg-transparent font-semibold outline-none"></select>
+      </div>
+    </div>
+  </header>
+
+  <!-- Help Banner (shows when errors happen) -->
+  <section id="helpBanner" class="no-print max-w-7xl mx-auto mb-6 hidden">
+    <div class="glass help p-4">
+      <h3 class="font-bold text-lg">troubleshooting</h3>
+      <p id="helpText" class="text-slate-300 mt-1"></p>
+      <details class="mt-3">
+        <summary class="cursor-pointer text-slate-200 font-semibold">run locally over http(s)</summary>
+        <div class="grid sm:grid-cols-3 gap-3 mt-2 text-sm">
+          <div>
+            <p class="font-semibold">vscode (live server)</p>
+            <pre>right click → “open with live server”</pre>
+          </div>
+          <div>
+            <p class="font-semibold">python</p>
+            <pre>python -m http.server 5500</pre>
+          </div>
+          <div>
+            <p class="font-semibold">node</p>
+            <pre>npx http-server -p 5500</pre>
+          </div>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <!-- Main -->
+  <main class="container mx-auto max-w-7xl">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <!-- Left side -->
+      <section>
+        <div id="video-container" class="mb-4 glass">
+          <video id="video" autoplay playsinline muted></video>
+          <canvas id="canvas"></canvas>
+        </div>
+
+        <div class="no-print flex flex-wrap items-center gap-3 mb-5 justify-between">
+          <div class="flex items-center gap-3">
+            <span class="status-pill">
+              <span id="status-dot" class="dot"></span>
+              <span id="system-status" class="font-semibold text-slate-200">Loading…</span>
+            </span>
+            <button id="fullscreenBtn" class="toggle" title="Fullscreen">Fullscreen</button>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button id="snapshotBtn" class="toggle" title="Save snapshot">Snapshot</button>
+            <label class="toggle" title="Record video">
+              <input id="recordToggle" type="checkbox" class="hidden" />
+              <span class="text-sm text-slate-300">Record</span>
+            </label>
+            <button id="settingsBtn" class="toggle" title="Settings">Settings</button>
+          </div>
+        </div>
+
+        <div class="no-print grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <button id="startButton" class="btn btn-primary" disabled>Start Proctoring</button>
+          <button id="stopButton" class="btn btn-danger" disabled>End & Generate Report</button>
+        </div>
+
+        <!-- Settings Panel -->
+        <div id="settingsPanel" class="no-print glass mt-4 p-4 hidden">
+          <h3 class="font-bold text-lg mb-3">Detection Settings</h3>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+            <label class="flex flex-col gap-1">
+              <span class="text-slate-400">Look-away seconds</span>
+              <input id="lookAwaySec" type="number" min="1" max="20" step="1" value="5" class="px-3 py-2 rounded-md bg-transparent border border-slate-600" />
+            </label>
+            <label class="flex flex-col gap-1">
+              <span class="text-slate-400">No-face seconds</span>
+              <input id="noFaceSec" type="number" min="2" max="60" step="1" value="10" class="px-3 py-2 rounded-md bg-transparent border border-slate-600" />
+            </label>
+            <label class="flex flex-col gap-1">
+              <span class="text-slate-400">COCO confidence %</span>
+              <input id="confPct" type="number" min="20" max="95" step="5" value="70" class="px-3 py-2 rounded-md bg-transparent border border-slate-600" />
+            </label>
+            <div class="flex flex-col gap-1">
+              <span class="text-slate-400">Watch items</span>
+              <div class="flex flex-wrap gap-3">
+                <label class="inline-flex items-center gap-2"><input type="checkbox" class="mon-item" value="cell phone" checked /> phone</label>
+                <label class="inline-flex items-center gap-2"><input type="checkbox" class="mon-item" value="book" checked /> book</label>
+                <label class="inline-flex items-center gap-2"><input type="checkbox" class="mon-item" value="laptop" /> laptop</label>
+                <label class="inline-flex items-center gap-2"><input type="checkbox" class="mon-item" value="notebook" /> notebook</label>
+                <label class="inline-flex items-center gap-2"><input type="checkbox" class="mon-item" value="paper" /> paper</label>
+              </div>
+            </div>
+          </div>
+          <div class="mt-3 flex flex-wrap gap-3">
+            <button id="exportLogsBtn" class="toggle">Export Logs (CSV)</button>
+            <a id="lastRecordingLink" class="toggle hidden" download="visionguard-recording.webm">Download Recording</a>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right side -->
+      <section class="space-y-6">
+        <div class="glass p-4">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-xl sm:text-2xl font-bold">Real-time Events</h2>
+            <span class="text-xs text-slate-400">Newest first</span>
+          </div>
+          <div id="log-container" class="p-4 text-sm">
+            <p class="text-slate-400">Logs will appear here…</p>
+          </div>
+        </div>
+
+        <div id="proctoring-report" class="glass p-4 hidden">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-xl sm:text-2xl font-bold">Proctoring Report</h2>
+            <button onclick="window.print()" class="no-print btn btn-neutral">Print Report</button>
+          </div>
+          <div id="report-details" class="space-y-3 text-sm"></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+<script>
+let video, canvas, ctx, mediaStream;
+let blazeModel=null, cocoModel=null;
+let interviewRunning=false;
+let eventLog=[];
+let startTime=null;
+let drawOverlays=true;
+let audioEnabled=true;
+let fpsLabel=document.getElementById('fpsLabel');
+let lastFrameAt=performance.now();
+let awaySeconds=5, noFaceSeconds=10, confPct=70;
+let monitoredItems=new Set(['cell phone','book']);
+let lookAwayAccum=0, lastFaceSeenAt=0, faceIsAway=false;
+let overlayToggle = document.getElementById('overlayToggle');
+let soundToggle   = document.getElementById('soundToggle');
+let themeToggle   = document.getElementById('themeToggle');
+
+const synthLazy = { current: null };
+function ensureSynth(){
+  if (!synthLazy.current){
+    try{ synthLazy.current = new Tone.Synth().toDestination(); }catch(e){ /* ignore */ }
+  }
+  return synthLazy.current;
+}
+
+const ui = {
+  startButton: document.getElementById('startButton'),
+  stopButton : document.getElementById('stopButton'),
+  statusDot  : document.getElementById('status-dot'),
+  systemStatus:document.getElementById('system-status'),
+  statusLabel: document.getElementById('statusLabel'),
+  durLabel   : document.getElementById('durLabel'),
+  logContainer:document.getElementById('log-container'),
+  proctoringReport:document.getElementById('proctoring-report'),
+  reportDetails:document.getElementById('report-details'),
+  settingsBtn: document.getElementById('settingsBtn'),
+  settingsPanel: document.getElementById('settingsPanel'),
+  deviceSelect: document.getElementById('deviceSelect'),
+  fullscreenBtn:document.getElementById('fullscreenBtn'),
+  snapshotBtn : document.getElementById('snapshotBtn'),
+  recordToggle: document.getElementById('recordToggle'),
+  exportLogsBtn:document.getElementById('exportLogsBtn'),
+  lastRecordingLink: document.getElementById('lastRecordingLink'),
+  lookAwaySecInput: document.getElementById('lookAwaySec'),
+  noFaceSecInput: document.getElementById('noFaceSec'),
+  confPctInput: document.getElementById('confPct'),
+  monItemInputs: document.querySelectorAll('.mon-item'),
+  helpBanner: document.getElementById('helpBanner'),
+  helpText  : document.getElementById('helpText')
+};
+
+// MediaRecorder for recording canvas
+let rec=null, recChunks=[];
+
+function setStatus(text, tone){
+  ui.systemStatus.textContent = text;
+  ui.statusLabel.textContent  = text;
+  const map = { ok:'var(--ok)', warn:'var(--warn)', err:'var(--err)' };
+  const glow = { ok:'rgba(34,197,94,.6)', warn:'rgba(245,158,11,.6)', err:'rgba(239,68,68,.6)' };
+  const c = map[tone] || 'var(--warn)';
+  ui.statusDot.style.background = c;
+  ui.statusDot.style.boxShadow  = `0 0 24px ${glow[tone]||glow.warn}`;
+}
+
+function formatDur(sec){
+  const m = Math.floor(sec/60).toString().padStart(2,'0');
+  const s = Math.floor(sec%60).toString().padStart(2,'0');
+  return `${m}:${s}`;
+}
+
+function tickDuration(){
+  if(!interviewRunning || !startTime) return;
+  const sec = (Date.now()-startTime)/1000;
+  ui.durLabel.textContent = formatDur(sec);
+  requestAnimationFrame(tickDuration);
+}
+
+function logEvent(type, message){
+  const ts = new Date().toLocaleString();
+  eventLog.push({ timestamp: ts, type, message });
+  const el = document.createElement('div');
+  el.className = 'log-entry';
+  const color = type==='Suspicious' ? 'text-rose-300' : (type==='Alert' ? 'text-amber-300' : 'text-cyan-300');
+  el.innerHTML = `<span class="text-slate-400">[${ts}]</span> <span class="font-bold ${color} mr-2">${type}:</span> <span class="text-slate-100">${message}</span>`;
+  ui.logContainer.prepend(el);
+  if (ui.logContainer.children.length > 250) ui.logContainer.lastChild?.remove();
+  if (type!=='System' && audioEnabled){
+    const s = ensureSynth(); try{ s && s.triggerAttackRelease(type==='Suspicious'?'C4':'A3','8n'); }catch(e){}
+  }
+}
+
+function drawBox(x,y,w,h,label,color='#a5b4fc'){
+  if(!drawOverlays) return;
+  ctx.beginPath(); ctx.lineWidth = 2; ctx.strokeStyle = color; ctx.rect(x,y,w,h); ctx.stroke();
+  if (label) {
+    ctx.font = '600 14px Inter, sans-serif'; ctx.fillStyle = color;
+    ctx.fillText(label, x+6, Math.max(16, y-6));
+  }
+}
+
+function centroid(box){ return { x: box[0] + box[2]/2, y: box[1] + box[3]/2 } }
+
+async function detectLoop(){
+  if (!interviewRunning) return;
+  if (!video || video.readyState < 2) { requestAnimationFrame(detectLoop); return; }
+
+  // FPS
+  const now = performance.now();
+  const dt  = now - lastFrameAt;
+  lastFrameAt = now;
+  document.getElementById('fpsLabel').textContent = Math.round(1000 / Math.max(dt,1));
+
+  // Resize canvas to video size
+  if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+    canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+  }
+
+  // Mirror draw
+  ctx.save(); ctx.scale(-1,1);
+  ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
+  ctx.restore();
+
+  // FACE
+  let faces = [];
+  try { faces = await blazeModel.estimateFaces(video, false); }
+  catch { try { faces = await blazeModel.estimateFaces(canvas, false); } catch { faces = []; } }
+
+  const nowS = performance.now()/1000;
+
+  if (!faces || faces.length===0){
+    if (lastFaceSeenAt===0) lastFaceSeenAt = nowS;
+    const absent = nowS - lastFaceSeenAt;
+    if (absent >= noFaceSeconds){
+      logEvent('Suspicious', `No face detected for ${Math.round(absent)}s.`);
+      lastFaceSeenAt = nowS; // reset so it won't spam
+    }
+    faceIsAway = false;
+    lookAwayAccum = 0;
+  } else {
+    // reset absence timer
+    lastFaceSeenAt = nowS;
+    if (faces.length>1) {
+      logEvent('Suspicious', 'Multiple faces detected.');
+    }
+    const f = faces[0];
+    const tl=f.topLeft, br=f.bottomRight;
+    const box=[tl[0],tl[1],br[0]-tl[0],br[1]-tl[1]];
+    const cent = centroid(box);
+
+    // draw face box (mirrored x)
+    drawBox(canvas.width - box[0] - box[2], box[1], box[2], box[3], 'face');
+
+    // away detection by x deviation
+    const devX = Math.abs(cent.x - canvas.width/2);
+    const thresh = canvas.width*0.18;
+    lookAwayAccum = devX > thresh ? (lookAwayAccum + dt/1000) : 0;
+    if (lookAwayAccum >= awaySeconds && !faceIsAway){
+      faceIsAway = true;
+      logEvent('Alert', `Looking away for ≥ ${awaySeconds}s.`);
+    }
+    if (devX <= thresh) faceIsAway = false;
+  }
+
+  // OBJECTS
+  try{
+    const preds = await cocoModel.detect(video);
+    for (const p of preds){
+      const cls = (p.class||'').toLowerCase();
+      const scorePct = Math.round((p.score||0)*100);
+      if (monitoredItems.has(cls) && scorePct >= confPct){
+        const [x,y,w,h] = p.bbox;
+        logEvent('Suspicious', `${p.class} detected (${scorePct}%).`);
+        drawBox(canvas.width - x - w, y, w, h, `${p.class} ${scorePct}%`, '#93c5fd');
+      }
+    }
+  }catch(e){}
+
+  requestAnimationFrame(detectLoop);
+}
+
+async function listDevices(selectedId){
+  try{
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const vids = devices.filter(d=>d.kind==='videoinput');
+    ui.deviceSelect.innerHTML = '';
+    vids.forEach((d,i)=>{
+      const opt = document.createElement('option');
+      opt.value = d.deviceId; opt.textContent = d.label || `Camera ${i+1}`;
+      if (selectedId && d.deviceId===selectedId) opt.selected=true;
+      ui.deviceSelect.appendChild(opt);
+    });
+  }catch(e){ /* ignore */ }
+}
+
+async function getStreamWithFallback(deviceId){
+  // cascade through constraints for maximum compatibility
+  const candidates = [
+    deviceId ? { video: { deviceId: { exact: deviceId } }, audio:false } : { video: { facingMode:'user' }, audio:false },
+    { video: true, audio: false },
+    { video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }
+  ];
+  let lastErr = null;
+  for (const c of candidates){
+    try {
+      const s = await navigator.mediaDevices.getUserMedia(c);
+      return s;
+    } catch(e){
+      lastErr = e;
+      continue;
+    }
+  }
+  throw lastErr || new Error('getUserMedia failed');
+}
+
+function startRecording(){
+  if (rec) return;
+  const stream = canvas.captureStream(30);
+  recChunks=[];
+  rec = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+  rec.ondataavailable = (e)=>{ if (e.data.size>0) recChunks.push(e.data); };
+  rec.onstop = ()=>{
+    const blob = new Blob(recChunks, { type: 'video/webm' });
+    const url = URL.createObjectURL(blob);
+    ui.lastRecordingLink.href = url;
+    ui.lastRecordingLink.classList.remove('hidden');
+  };
+  rec.start();
+  document.getElementById('video-container').classList.add('recording');
+}
+
+function stopRecording(){
+  if (!rec) return;
+  rec.stop();
+  rec = null;
+  document.getElementById('video-container').classList.remove('recording');
+}
+
+function exportLogsCSV(){
+  const headers = ['timestamp','type','message'];
+  const rows = eventLog.map(e=>[e.timestamp, e.type, e.message]);
+  const csv = [headers, ...rows].map(r=>r.map(x=>`"${(x||'').toString().replaceAll('"','""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type:'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'visionguard-logs.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function saveSnapshot(){
+  const link = document.createElement('a');
+  link.download = `snapshot_${Date.now()}.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+
+function generateReport(){
+  if (!startTime) return;
+  const dur = Math.round((Date.now()-startTime)/1000);
+  const focusLostCount = eventLog.filter(e=> e.type==='Alert' && e.message.toLowerCase().includes('looking away')).length;
+  const noFaceCount = eventLog.filter(e=> e.type==='Suspicious' && e.message.toLowerCase().includes('no face')).length;
+  const suspiciousItemCount = eventLog.filter(e=> e.type==='Suspicious' && /detected/.test(e.message.toLowerCase())).length;
+  const multipleFaceCount = eventLog.filter(e=> e.type==='Suspicious' && e.message.toLowerCase().includes('multiple faces')).length;
+  const deductions = (focusLostCount*2) + (noFaceCount*5) + (suspiciousItemCount*10) + (multipleFaceCount*15);
+  const finalScore = Math.max(0, 100 - deductions);
+
+  ui.reportDetails.innerHTML = `
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-slate-200">
+      <p><span class="font-semibold text-slate-300">Candidate:</span> John Doe (Mock)</p>
+      <p><span class="font-semibold text-slate-300">Duration:</span> ${Math.floor(dur/60)}m ${dur%60}s</p>
+    </div>
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-2">
+      <div class="metric"><span class="text-slate-400 text-sm">Focus Lost</span><span class="font-bold">${focusLostCount}</span></div>
+      <div class="metric"><span class="text-slate-400 text-sm">Face Absence</span><span class="font-bold">${noFaceCount}</span></div>
+      <div class="metric"><span class="text-slate-400 text-sm">Items</span><span class="font-bold">${suspiciousItemCount}</span></div>
+      <div class="metric"><span class="text-slate-400 text-sm">Multiple Faces</span><span class="font-bold">${multipleFaceCount}</span></div>
+    </div>
+    <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div class="col-span-1 sm:col-span-1 flex items-center justify-center">
+        <div class="relative size-28">
+          <svg viewBox="0 0 36 36" class="size-28">
+            <path d="M18 2 a 16 16 0 1 1 0 32 a 16 16 0 1 1 0 -32" fill="none" stroke="rgba(148,163,184,.25)" stroke-width="3"/>
+            <path d="M18 2 a 16 16 0 1 1 0 32" fill="none" stroke="${finalScore>80?'#22c55e':finalScore>60?'#f59e0b':'#ef4444'}" stroke-width="3"
+              stroke-dasharray="${finalScore/100*100}, 100" stroke-linecap="round"/>
+          </svg>
+          <div class="absolute inset-0 grid place-items-center text-2xl font-extrabold">${finalScore}</div>
+        </div>
+      </div>
+      <div class="sm:col-span-2">
+        <h3 class="font-bold text-lg">Final Score</h3>
+        <p class="text-slate-200">Higher means fewer violations. Score is computed with weighted deductions for item detections, face absence, and attention loss.</p>
+      </div>
+    </div>
+  `;
+  ui.proctoringReport.classList.remove('hidden');
+}
+
+function showHelp(msg){
+  ui.helpText.textContent = msg;
+  ui.helpBanner.classList.remove('hidden');
+}
+
+async function init(){
+  // Theme & toggles
+  try{
+    const theme = localStorage.getItem('vg_theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', theme);
+    themeToggle.checked = (theme==='light');
+    drawOverlays = JSON.parse(localStorage.getItem('vg_overlay') ?? 'true');
+    overlayToggle.checked = drawOverlays;
+    audioEnabled = JSON.parse(localStorage.getItem('vg_sound') ?? 'true');
+    soundToggle.checked = audioEnabled;
+    awaySeconds = parseInt(localStorage.getItem('vg_away')||'5',10);
+    noFaceSeconds = parseInt(localStorage.getItem('vg_noface')||'10',10);
+    confPct = parseInt(localStorage.getItem('vg_conf')||'70',10);
+    ui.lookAwaySecInput.value = awaySeconds;
+    ui.noFaceSecInput.value = noFaceSeconds;
+    ui.confPctInput.value = confPct;
+    ui.monItemInputs.forEach(cb=>{
+      if (monitoredItems.has(cb.value)) cb.checked = true;
+      cb.addEventListener('change', ()=>{
+        if (cb.checked) monitoredItems.add(cb.value); else monitoredItems.delete(cb.value);
+        localStorage.setItem('vg_items', JSON.stringify([...monitoredItems]));
+      });
+    });
+    const savedItems = JSON.parse(localStorage.getItem('vg_items')||'[]');
+    if (savedItems.length){ monitoredItems = new Set(savedItems); ui.monItemInputs.forEach(cb=>cb.checked = monitoredItems.has(cb.value)); }
+  }catch(e){}
+
+  // Secure context check
+  if (!window.isSecureContext && !['localhost','127.0.0.1'].includes(location.hostname)){
+    setStatus('Needs HTTPS or localhost', 'err');
+    showHelp('your browser blocks camera on file:// or non-secure pages. open this file via a local server (http://localhost:5500) or any https host.');
+    // we still continue to load models so user can see whether that part works
+  }
+
+  // Backend + models
+  setStatus('Loading TF backend…', 'warn');
+  try {
+    // Prefer webgl but gracefully fall back
+    try { await tf.setBackend('webgl'); }
+    catch { await tf.setBackend('cpu'); }
+    await tf.ready();
+  } catch(e){
+    setStatus('TF backend failed', 'err');
+    showHelp('failed to initialize tensorflow.js. try a modern chromium/firefox/safari browser.');
+    console.error('TF backend error', e);
+    return;
+  }
+
+  setStatus('Loading models…', 'warn');
+  try {
+    blazeModel = await blazeface.load();     // face
+    cocoModel  = await cocoSsd.load();       // objects
+  } catch (err) {
+    console.error(err);
+    setStatus('Model download failed', 'err');
+    showHelp('could not download models (network blocked or offline). ensure internet access to jsdelivr cdn.');
+    return;
+  }
+
+  // Camera
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    setStatus('Camera API not available', 'err');
+    showHelp('your browser does not support camera api. update your browser or check permissions policy.');
+    return;
+  }
+
+  setStatus('Accessing camera…', 'warn');
+  try {
+    mediaStream = await getStreamWithFallback();
+    video = document.getElementById('video');
+    canvas = document.getElementById('canvas');
+    ctx = canvas.getContext('2d');
+    video.srcObject = mediaStream;
+    await new Promise(resolve => video.onloadedmetadata = resolve);
+    canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+    await listDevices(mediaStream.getVideoTracks()[0]?.getSettings()?.deviceId);
+    setStatus('Ready — press Start', 'ok');
+    ui.startButton.disabled = false;
+  } catch (err) {
+    console.error('getUserMedia error', err);
+    if (err && err.name === 'NotAllowedError'){
+      setStatus('Camera permission denied', 'err');
+      showHelp('permission to use the camera was denied. allow camera permission in your browser and reload.');
+    } else if (err && err.name === 'NotFoundError'){
+      setStatus('No camera found', 'err');
+      showHelp('no camera device detected. check if a webcam is connected or enabled.');
+    } else if (err && err.name === 'NotReadableError'){
+      setStatus('Camera busy', 'err');
+      showHelp('camera is already in use by another app/tab. close it and reload.');
+    } else {
+      setStatus('Error opening camera', 'err');
+      showHelp('could not access camera. try switching to localhost/https or a different browser.');
+    }
+    return;
+  }
+}
+
+// UI handlers
+ui.startButton.addEventListener('click', async () => {
+  if (interviewRunning) return;
+  interviewRunning = true;
+  eventLog = [];
+  startTime = Date.now();
+  ui.logContainer.innerHTML = '';
+  ui.startButton.disabled = true;
+  ui.stopButton.disabled = false;
+  logEvent('System', 'Proctoring started.');
+  if (ui.recordToggle.checked) startRecording();
+  requestAnimationFrame(detectLoop);
+  requestAnimationFrame(tickDuration);
+});
+
+ui.stopButton.addEventListener('click', () => {
+  if (!interviewRunning) return;
+  interviewRunning = false;
+  ui.startButton.disabled = false;
+  ui.stopButton.disabled = true;
+  logEvent('System', 'Proctoring ended.');
+  if (rec) stopRecording();
+  generateReport();
+});
+
+overlayToggle.addEventListener('change', ()=>{
+  drawOverlays = overlayToggle.checked;
+  localStorage.setItem('vg_overlay', JSON.stringify(drawOverlays));
+});
+soundToggle.addEventListener('change', ()=>{
+  audioEnabled = soundToggle.checked;
+  localStorage.setItem('vg_sound', JSON.stringify(audioEnabled));
+  if (audioEnabled) ensureSynth();
+});
+themeToggle.addEventListener('change', ()=>{
+  const theme = themeToggle.checked ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('vg_theme', theme);
+});
+
+ui.settingsBtn.addEventListener('click', ()=> ui.settingsPanel.classList.toggle('hidden'));
+ui.fullscreenBtn.addEventListener('click', ()=>{
+  const el = document.getElementById('video-container');
+  if (!document.fullscreenElement){ el.requestFullscreen?.(); }
+  else { document.exitFullscreen?.(); }
+});
+ui.snapshotBtn.addEventListener('click', saveSnapshot);
+ui.exportLogsBtn.addEventListener('click', exportLogsCSV);
+
+// Settings inputs
+ui.lookAwaySecInput.addEventListener('change', ()=>{
+  awaySeconds = Math.max(1, parseInt(ui.lookAwaySecInput.value||'5',10));
+  localStorage.setItem('vg_away', awaySeconds.toString());
+});
+ui.noFaceSecInput.addEventListener('change', ()=>{
+  noFaceSeconds = Math.max(2, parseInt(ui.noFaceSecInput.value||'10',10));
+  localStorage.setItem('vg_noface', noFaceSeconds.toString());
+});
+ui.confPctInput.addEventListener('change', ()=>{
+  confPct = Math.min(95, Math.max(20, parseInt(ui.confPctInput.value||'70',10)));
+  localStorage.setItem('vg_conf', confPct.toString());
+});
+
+ui.deviceSelect.addEventListener('change', async ()=>{
+  try {
+    const devId = ui.deviceSelect.value;
+    const s = await getStreamWithFallback(devId);
+    if (mediaStream){ mediaStream.getTracks().forEach(t=>t.stop()); }
+    mediaStream = s;
+    video.srcObject = mediaStream;
+  } catch(e){
+    console.error('device switch failed', e);
+    setStatus('Failed to switch camera', 'err');
+  }
+});
+
+// keybinds
+window.addEventListener('keydown', (e)=>{
+  if (e.key==='s') ui.snapshotBtn.click();
+  if (e.key==='r') ui.recordToggle.checked = !ui.recordToggle.checked;
+  if (e.key==='o') overlayToggle.click();
+  if (e.key==='f') ui.fullscreenBtn.click();
+});
+
+window.addEventListener('pointerdown', ensureSynth, { once:true });
+window.addEventListener('load', init);
+</script>
+</body>
+</html>
