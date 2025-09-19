@@ -1,4 +1,4 @@
-# VisionGuard Pro (Static)
+# VisionGuard
 
 A zero-backend, client-side AI proctoring demo using TensorFlow.js (BlazeFace + COCO-SSD).
 
